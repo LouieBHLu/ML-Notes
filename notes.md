@@ -344,19 +344,184 @@ mglearn.plots.plot_scaling()
 
 
 
-2. 凝聚聚类
-
-- 
 
 
+## 数据表示与特征工程
 
-
-
+- 连续特征（continuous feature）
+- 离散/分类特征（categorical feature）
 
 
 
+### 4.1 分类变量
+
+- 对于logisitic，我们需要将**分类特征**变为**连续特征**才能填入x[p]中
+
+#### 4.1.1 One-Hot编码（虚拟变量）
+
+- 表示分类变量的方法：one-hot编码（one-hot-encoding）或 N取一编码（one-out-of-N encoding），也叫虚拟变量（dummy variable）
+  - **将一个分类变量变化为多个“子”特征，当分类变量取某个值，这些“子”特征其中之一取1，其他取0**
+
+- 实施方法：pandas or scikit-learn
+  - pandas.get_dummies: 自动变换所有具有对象类型，比如字符串的列或所有分类的列（groupby），**但是会将所有数字看为连续变量**
+
+#### 4.1.2 数字可以编码分类变量
+
+- scikit-learn的OneHotEncoder
+
+- 或者将数值列转化为字符串
+
+  ```python
+  df['int feature'] = df['int feature'].astype(str)
+  ```
 
 
+
+### 4.2 分箱、离散化、线性模型与树
+
+- **分箱**（binning，也叫离散化，discretization）：使线性模型在连续数据上变得更加强大
+
+  - 假设特征的输入范围划分为固定个数的**箱子**（bin），数据点就可以用它所在箱子表示。这里将单个连续输入特征变换为一个分类特征
+
+    ```python
+    bins = np.linspace(-3,3,11) # 创建10个箱子，11是连续边界之间的空间
+    which_bin = np.digitize(X, bins=bins) # 决定每个数据点所属的箱子
+    ```
+
+  - 使用preprocessing模块的onehotencoder将这个离散特征变换为one-hot编码，onehotencoder只适用于**整数**的分类变量
+
+    ```python
+    from sklearn.preprocessing import OneHotEncoder
+    encoder = OneHotEncoder(sparse=False)
+    # 使用encoder.fit找到which_bin中的唯一值
+    encoder.fit(which_bin)
+    # transform创建one-hot编码
+    X_binned = encoder.transform(which_bin)
+    ```
+
+- **分箱多用于有充分理由使用线性模型，但是其中有些特征与输出的关系是非线性的数据集**
+
+
+
+### 4.3 -4.4 TBD
+
+
+
+### 4.5 自动化特征选择
+
+- 添加更多特征会使所有模型变得更加复杂 -> 增加过拟合的可能性
+
+#### 4.5.1 单变量统计
+
+- 计算每个特征和目标值之间的关系是否存在统计显著性，并选择具有最高置信度的特征。对于分类问题，也称为方差分析（ANOVA）
+- scikit-learn中
+  - 分类：``f_classif``
+  - 回归：``f_regression``
+- 给予测试中确定的p值来选择舍弃特征的方法。所有方法都适用阈值来舍弃所有p值过大的特征。最主要的两种
+  - 在``sklearn.feature_selection``里面
+  - ``SelectKBest``：选择固定数量的k个特征
+  - ``SelectPercentile``：选择固定百分比的特征
+- 可视化选择：``get_support`` + ``plt.matshow``
+
+
+
+#### 4.5.2 基于模型的特征选择
+
+- 使用一个监督机器学习 模型来判断每个特征的重要性，并且仅保留最重要的特征
+- ``from sklearn.feature_selection import SelectFromModel``
+- ``SelectFromModel(RandomForestClassifier(... threshold='median'))``，其中threshold选取中位数，就可以选择一半特征
+
+
+
+#### 4.5.3 迭代特征选择
+
+- 构建一系列模型，每个模型都适用不同数量的特征。
+- 两种基本方法：
+  - 开始时没有特征，然后逐个添加特征，直到满足某个终止条件
+  - 或从所有特征开始，逐个删除特征，直到满足某个终止条件
+- 特殊方法：**递归特征消除（recursive feature elimination, RFE）**
+  - 每次递归：舍弃最不重要的特征，并构建新模型
+  - 返回条件：留下预设数量的特征
+  - ``from sklearn.feature_selection import RFE`
+
+
+
+### 4.6 利用专家知识
+
+- 用脑子想特征的现实意义，哪些特征最重要，人为干预
+
+
+
+
+
+## 模型评估与改进
+
+### 评估指标与评分
+
+### 交叉验证
+
+1. K折交叉验证
+
+- k = 5 or 10, 将数据氛围k份，每一份为一折
+- 将第一折作为测试集，其他折作为训练集来训练第一个模型
+
+
+
+
+
+## 7 处理文本数据
+
+### 7.1 用字符串表示的数据类型
+
+- 四种类型的字符串数据：
+
+  - **分类数据**
+
+    来自固定列表（下拉菜单等）的数据。强烈推荐
+
+  - **可以在语义上映射为类别的自由字符串**
+
+    从文本框中得到的回答属于上述列表中的第二类。最好将这种数据编码为分类变量，你可以利用最常见的条目来选择类别。对于无法归类的回答用“其他”类别来。**需要大量人力**。
+
+  - **结构化字符串数据**（略）
+
+  - **文本数据**
+
+    由短语和句子组成。假设所有文档都适用英语。
+
+    数据集： **语料库**
+
+    每个由单个文本表示的数据点被称为**文档**
+
+### 7.3 将文本数据表示为词袋
+
+- **词袋**：计算语料库中每个单词在每个文本中的出现频次，舍弃结构。
+
+  - **分词（tokenization）**: 将每个文档划分为出现在其中的单词，例如空格和标点划分
+  - **构建词表（vocabulary building）**： 收集一个词表，里面包含出现在任意文档中的所有词，并对它们进行编号
+  - **编码（encoding）**：对于每个文档，计算词表中每个单词在该文档中的出现频次。
+
+  <img src="/Users/mingxulu/Library/Application Support/typora-user-images/image-20210219163454784.png" alt="image-20210219163454784" style="zoom:67%;" />
+
+  
+
+#### 7.3.1 将词袋应用于玩具数据集
+
+- 在`CountVectorizer`中实现，它是一个transformer
+
+  ```python
+  # TBD
+  bards_words = None
+  from sklearn.feature_extraction.text import CountVectorizer
+  vect = CountVectorizer()
+  vect.fit(bards_words)
+  # Use .vocabulary_ to access the word list
+  print("Size:{}".format(len(vect.vocabulary_)))
+  # Use transformer to create bags of words
+  bag_of_words = vect.transform(bards_words)
+  # It's a scipy array. Do not use Numpy array due to potential causing MemoryError
+  print("bag_of_words:{}".format(repr(bag_of_words)))
+  ```
 
 
 
