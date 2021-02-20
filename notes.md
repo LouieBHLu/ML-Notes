@@ -524,6 +524,7 @@ mglearn.plots.plot_scaling()
   ```
 
 - 
+  
 
 
 
