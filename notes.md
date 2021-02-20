@@ -523,8 +523,218 @@ mglearn.plots.plot_scaling()
   print("bag_of_words:{}".format(repr(bag_of_words)))
   ```
 
-- 
+#### 7.3.2 将词袋应用于电影评论
+
+下面我们将其应用于电影评论情感分析的任务。
+
+- 将训练数据和测试数据加载为字符串列表
+
+  ```python
+  # 以训练集为例
+  vect = CountVectorizer().fit(text_train)
+  X_train = vect.transform(text_train)
+  print("X_train:\n{}".format(repr(X_train)))
+  ```
+
+- 使用get_feature_names()获得词表的特征
+
+  ```python
+  feature_names = vect.get_feature_names()
+  print("Number of features: {}".format(len(feature_names)))
+  print("First 20 features:\n{}".format(feature_names[:20]))
+  print("Features 20010 to 20030:\n{}".format(feature_names[20010:20030]))
+  print("Every 2000th feature:\n{}".format(feature_names[::2000]))
+  ```
+
+- 在尝试改进特征提取之前，我们先通过实际构建一个分类器来得到性能的量化度量。我们将训练标签保存在y_train 中，训练数据的词袋表示保存在X_train 中，因此我们可以在这个数据上训练一个分类器。对于这样的高维稀疏数据，类似LogisticRegression 的线性模型通常效果最好。
+
+  我们首先使用交叉验证对LogisticRegression 进行评估:
+
+  ```python
+  from sklearn.model_selection import cross_val_score
+  from sklearn.linear_model import LogisticRegression
+  scores = cross_val_score(LogisticRegression(), X_train, y_train, cv=5)
+  print("Mean cross-validation accuracy: {:.2f}".format(np.mean(scores)))
+  ```
+
+- 我们知道，LogisticRegression 有一个正则化参数C，我们可以通过交叉验证来调节它：
+
+  ```python
+  from sklearn.model_selection import GridSearchCV
+  param_grid = {'C': [0.001, 0.01, 0.1, 1, 10]}
+  grid = GridSearchCV(LogisticRegression(), param_grid, cv=5)
+  grid.fit(X_train, y_train)
   
+  # 输出最好分数以及最好的C值
+  print("Best cross-validation score: {:.2f}".format(grid.best_score_))
+  print("Best parameters: ", grid.best_params_)
+  ```
+
+- 现在，我们可以在测试集上评估这个参数设置的泛化性能：
+
+  ```python
+  X_test = vect.transform(text_test)
+  print("{:.2f}".format(grid.score(X_test, y_test)))
+  ```
+
+- 下面我们来看一下能否改进单词提取。`CountVectorizer` 使用正则表达式提取词例。默认使用的正则表达式是`\b\w\w+\b`。
+
+  **为了减少不包含信息量的特征（比如数字）**，我们使用`min_df`参数来限制词例至少需要在多少个文档中出现过。
+
+  ```python
+  vect = CountVectorizer(min_df=5).fit(text_train)
+  X_train = vect.transform(text_train)
+  print("X_train with min_df: {}".format(repr(X_train)))
+  ```
+
+
+
+### 7.4 停用词
+
+- 删除没有信息量的单词还有另一种方法，就是舍弃那些出现次数太多以至于没有信息量的单词。
+
+  有两种主要方法
+
+  1. 使用特定语言的停用词（stopword）列表
+  2. 舍弃那些出现过于频繁的单词
+
+  ```python
+  from sklearn.feature_extraction.text import ENGLISH_STOP_WORDS
+  print("Number of stop words: {}".format(len(ENGLISH_STOP_WORDS)))
+  print("Every 10th stopword:\n{}".format(list(ENGLISH_STOP_WORDS)[::10]))
+  
+  # 指定stop_words="english"将使用内置列表。
+  # 我们也可以扩展这个列表并传入我们自己的列表。
+  vect = CountVectorizer(min_df=5, stop_words="english").fit(text_train)
+  X_train = vect.transform(text_train)
+  print("X_train with stop words:\n{}".format(repr(X_train)))
+  ```
+
+
+
+### 7.5 用tf-idf缩放数据
+
+TBD
+
+
+
+### 7.7 多个单词的词袋（n元分词）
+
+- 使用词袋表示的主要缺点之一是完全舍弃了单词顺序。
+
+- 使用词袋表示时有一种获取上下文的方法，就是不仅考虑单一词例的计数，而且还考虑相邻的两个或三个词例的计数。
+
+  两个词例被称为二元分词（bigram），三个词例被称为三元分词（trigram），更一般的词例序列被称为n 元分词（n-gram）。
+
+  我们可以通过改变`CountVectorizer` 或`TfidfVectorizer的ngram_range` 参数来改变作为特征的词例范围。`ngram_range` 参数是一个元组，包含要考虑的词例序列的最小长度和最大长度。
+
+  默认情况下，为每个长度最小为1 且最大为1 的词例序列（或者换句话说，刚好1个词例）创建一个特征——单个词例也被称为一元分词（unigram）：
+
+  ```python
+  cv = CountVectorizer(ngram_range=(1, 1)).fit(bards_words)
+  print("Vocabulary size: {}".format(len(cv.vocabulary_)))
+  print("Vocabulary:\n{}".format(cv.get_feature_names()))
+  ```
+
+  要想仅查看二元分词（即仅查看由两个相邻词例组成的序列），可以将ngram_range 设置为(2, 2)：
+
+  ```python
+  cv = CountVectorizer(ngram_range=(2, 2)).fit(bards_words)
+  print("Vocabulary size: {}".format(len(cv.vocabulary_)))
+  print("Vocabulary:\n{}".format(cv.get_feature_names()))
+  ```
+
+- 添加更长的序列（一直到五元分词）也可能有所帮助，但这会导致特征数量的大大增加，也可能会导致**过拟合**，因为其中包含许多非常具体的特征。
+
+- 我们在IMDb 电影评论数据上尝试使用TfidfVectorizer，并利用网格搜索找出n 元分词的最佳设置：
+
+  ```python
+  pipe = make_pipeline(TfidfVectorizer(min_df=5), LogisticRegression())
+  # 运行网格搜索需要很长时间，因为网格相对较大，且包含三元分词
+  param_grid = {"logisticregression__C": [0.001, 0.01, 0.1, 1, 10, 100],
+  "tfidfvectorizer__ngram_range": [(1, 1), (1, 2), (1, 3)]}
+  grid = GridSearchCV(pipe, param_grid, cv=5)
+  grid.fit(text_train, y_train)
+  print("Best cross-validation score: {:.2f}".format(grid.best_score_))
+  print("Best parameters:\n{}".format(grid.best_params_))
+  ```
+
+- 我们可以将交叉验证精度作为ngram_range 和C 参数的函数并用热图可视化:
+
+  ```python
+  # 从网格搜索中提取分数
+  scores = grid.cv_results_['mean_test_score'].reshape(-1, 3).T
+  # 热图可视化
+  heatmap = mglearn.tools.heatmap(
+  scores, xlabel="C", ylabel="ngram_range", cmap="viridis", fmt="%.3f",
+  xticklabels=param_grid['logisticregression__C'],
+  yticklabels=param_grid['tfidfvectorizer__ngram_range'])
+  plt.colorbar(heatmap)
+  ```
+
+  <img src="/Users/mingxulu/Library/Application Support/typora-user-images/image-20210220142008756.png" alt="image-20210220142008756" style="zoom:67%;" />
+
+  从热图中可以看出，使用二元分词对性能有很大提高，而添加三元分词对精度只有很小贡献。
+
+
+
+### 7.8 高级分词、词干提取与词形还原
+
+TBD
+
+
+
+### 7.9 主题建模与文档聚类
+
+-  **主题建模 (topic modeling)**, 是描述将每个文档分配给一个或多个主题的任务（通常是无监督的）的概括性术语。
+
+- **隐含狄利克雷分布**
+
+  从直观上来看，LDA 模型试图找出频繁共同出现的单词群组（即主题）。LDA 还要求，每个文档可以被理解为主题子集的“混合”。
+
+  重要的是要理解，机器学习模型所谓的“主题”可能不是我们通常在日常对话中所说的主题，它可能具有语义，也可能没有。
+
+- 我们将LDA应用于**电影评论数据集**， 对于无监督的文本文档模型，通常最好删除非常常见的单词，否则它们可能会支配分析过程。我们将删除至少在15%的文档中出现过的单词，并在删除前15%之后，将词袋模型限定为最常见的10000 个单词：
+
+  ```python
+  vect = CountVectorizer(max_features=10000, max_df=.15)
+  X = vect.fit_transform(text_train)
+  ```
+
+  我们将使用"batch" 学习方法，它比默认方法（"online"）稍慢，但通常会给出更好的结果。我们还将增大max_iter，这样会得到更好的模型:
+
+  ```python
+  from sklearn.decomposition import LatentDirichletAllocation
+  lda = LatentDirichletAllocation(n_topics=10, learning_method="batch",
+  max_iter=25, random_state=0)
+  # 我们在一个步骤中构建模型并变换数据
+  # 计算变换需要花点时间，二者同时进行可以节省时间
+  document_topics = lda.fit_transform(X)
+  ```
+
+  LatentDirichletAllocation 有一个`components_ `属性，其中保存了每个单词对每个主题的重要性。`components_ `的大小为(n_topics, n_words)：
+
+  ```python
+  lda.components_.shape
+  ```
+
+  为了更好地理解不同主题的含义，我们将查看每个主题中最重要的单词。print_topics 函数为这些特征提供了良好的格式：
+
+  ```python
+  # 对于每个主题（components_的一行），将特征排序（升序）
+  # 用[:, ::-1]将行反转，使排序变为降序
+  sorting = np.argsort(lda.components_, axis=1)[:, ::-1]
+  # 从向量器中获取特征名称
+  feature_names = np.array(vect.get_feature_names())
+  
+  # 打印出前10个主题：
+  mglearn.tools.print_topics(topics=range(10), feature_names=feature_names,
+  sorting=sorting, topics_per_chunk=5, n_words=10)
+  ```
+
+  
+
+
 
 
 
