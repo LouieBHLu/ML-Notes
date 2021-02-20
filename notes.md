@@ -523,7 +523,7 @@ mglearn.plots.plot_scaling()
   print("bag_of_words:{}".format(repr(bag_of_words)))
   ```
 
-
+- 
 
 
 
